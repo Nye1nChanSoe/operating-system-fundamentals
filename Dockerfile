@@ -7,7 +7,9 @@ RUN apt update && apt install -y \
     curl \
     git \
     vim \
+    nano \
     build-essential \
+    python3 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /workspace

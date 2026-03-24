@@ -1,0 +1,27 @@
+# metadata: start after network is ready
+[Unit]
+Description=NVDA stock tracker during Nasdaq trading hours
+After=network-online.target
+Wants=network-online.target
+
+# execution: foreground simple task with some isolation user group
+[Service]
+Type=simple
+User=nvda-tracker
+Group=nvda-tracker
+WorkingDirectory=/workspace/trillion-dollar-question
+ExecStart=uv run /workspace/trillion-dollar-question/nvda_tracker.py
+Restart=always
+RestartSec=5
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/nvda-tracker
+WorkingDirectory=/workspace/trillion-dollar-question
+
+# auto-start boot
+[Install]
+WantedBy=multi-user.target
