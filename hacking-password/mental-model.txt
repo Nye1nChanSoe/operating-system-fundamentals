@@ -1,0 +1,64 @@
+First i run the uname command to display the information of my system 
+uname -m -> aarch64 so basically arm64
+
+So i will be using password.arm64.elf binaries to examine further
+
+I run the progam ./password.arm64.elf
+
+then check the PID using ps -Af | grep "password"
+
+Then I check the virtual memory layout of this process using
+cat /proc/<pid>/maps
+
+My intuition is to examine these addresses further
+aaaada960000-aaaada961000 r--p 00000000 00:2d 26537  /workspace/hacking-password/password.arm64.elf
+aaaada961000-aaaada962000 rw-p 00001000 00:2d 26537  /workspace/hacking-password/password.arm64.elf
+aaaadb6fc000-aaaadb71d000 rw-p 00000000 00:00 0      [heap]
+ffffc1eb9000-ffffc1eda000 rw-p 00000000 00:00 0      [stack]
+
+First two contains constants and variables so the password could be in there.
+Heap is the MUST to place to check since runtime data probably lives here and allocated memory for password.
+Stack is least likely but i will check if i cannot find above these 3 places.
+
+To check with GNU debugger for this process
+gdb -p <pid>
+
+0x0000ffff85961244 in __GI___libc_read (fd=0, buf=0xaaaae22d52c0, nbytes=1024) at ../sysdeps/unix/sysv/linux/read.c:26
+
+When I attached gdb, I observed the program executing read(), storing user input at address 0xaaaae22d52c0. 
+By checking /proc/<pid>/maps, I confirmed this address lies within the heap, indicating that 
+input is stored in dynamically allocated memory.
+Since the program must compare user input with the correct password, 
+both are likely present in memory at the same time. Based on this, I focused on the heap region, 
+dumped it using gdb, and used strings to identify the password.
+
+(gdb) dump memory heap.dump 0xaaaae22d5000 0xaaaae22f6000
+
+> strings heap.dump
+pwAW96B6
+
+I want to find the exact memory location so i run
+(gdb) find 0xaaaae22d5000, 0xaaaae22f6000, "pwAW96B6"
+0xaaaae22d52a0
+(gdb) x/s 0xaaaae22d52a0
+0xaaaae22d52a0:	"pwAW96B6"
+(gdb) x/16bx 0xaaaae22d52a0
+0xaaaae22d52a0:	0x70	0x77	0x41	0x57	0x39	0x36	0x42	0x36
+0xaaaae22d52a8:	0x00	0x00	0x00	0x00	0x00	0x00	0x00	0x00
+
+So the password is ASCII encoded null terminated string.
+
+hexdump also helps
+root@ce9575f83cd8:/workspace/hacking-password# hexdump -C heap.dump 
+00000000  00 00 00 00 00 00 00 00  91 02 00 00 00 00 00 00  |................|
+00000010  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+*
+00000290  00 00 00 00 00 00 00 00  21 00 00 00 00 00 00 00  |........!.......|
+000002a0  70 77 41 57 39 36 42 36  00 00 00 00 00 00 00 00  |pwAW96B6........|
+000002b0  00 00 00 00 00 00 00 00  11 04 00 00 00 00 00 00  |................|
+000002c0  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+*
+000006c0  00 00 00 00 00 00 00 00  41 09 02 00 00 00 00 00  |........A.......|
+000006d0  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+*
+00021000
